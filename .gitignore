@@ -1,0 +1,11 @@
+# Flask
+/.venv/
+.env.local
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
