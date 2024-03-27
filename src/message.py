@@ -1,5 +1,6 @@
 import datetime
 from dataclasses import dataclass
+from typing import List
 
 
 @dataclass
@@ -8,3 +9,4 @@ class GithubEvent:
     keyword: str
     found_date: datetime
     match_cnt: int
+    langs: List[str]

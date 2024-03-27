@@ -27,11 +27,8 @@ def _mapper(event: GithubEvent) -> KeywordRepoNamePair:
 def filter_new_repos(storage: ReposPerKeywordStorage, src: Observable[GithubEvent]) -> Observable[KeywordRepoNamePair]:
     return src.pipe(
         ops.map(_mapper),
+        # ops.do_action(print),  # log
         ops.filter(lambda event: event.repo_name not in storage.get(event.keyword, set())),  # filter old results
         ops.do_action(lambda event: storage.setdefault(event.keyword, set()).add(event.repo_name)),  # save new results
         ops.do_action(on_error=print),
     )
-
-
-def subscribe_for_new_repo_updates(keyword: Keyword) -> Observable[RepoName]:
-    pass
