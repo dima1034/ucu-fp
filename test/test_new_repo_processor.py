@@ -12,7 +12,7 @@ def storage() -> dict:
     return {}
 
 
-def test_store_new_repo_stores_only_unique_repo_names_for_each_keyword(storage: dict) -> None:
+def test_filter_new_repos_stores_only_unique_repo_names_for_each_keyword(storage: dict) -> None:
     # GIVEN
     events = [
         GithubEvent(keyword="keyword1", repo_fullname="repo1", found_date=datetime.now(), match_cnt=1),
@@ -27,7 +27,7 @@ def test_store_new_repo_stores_only_unique_repo_names_for_each_keyword(storage: 
     source: Observable[GithubEvent] = from_iterable(events)
 
     # WHEN
-    processor.store_repo(storage)(source).subscribe()
+    processor.filter_new_repos(storage)(source).subscribe()
 
     # THEN
     assert storage == expected_storage

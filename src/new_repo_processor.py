@@ -24,20 +24,11 @@ def _mapper(event: GithubEvent) -> KeywordRepoNamePair:
 
 
 @curry(1)
-def store_repo(storage: ReposPerKeywordStorage, src: Observable[GithubEvent]) -> Observable[None]:
-    return src.pipe(
-        ops.map(_mapper),
-        ops.map(lambda event: storage.setdefault(event.keyword, set()).add(event.repo_name)),
-        ops.do_action(on_error=print),
-        ops.ignore_elements(),
-    )
-
-
-@curry(1)
 def filter_new_repos(storage: ReposPerKeywordStorage, src: Observable[GithubEvent]) -> Observable[KeywordRepoNamePair]:
     return src.pipe(
         ops.map(_mapper),
-        ops.filter(lambda event: event.repo_name not in storage.get(event.keyword, set())),
+        ops.filter(lambda event: event.repo_name not in storage.get(event.keyword, set())),  # filter old results
+        ops.do_action(lambda event: storage.setdefault(event.keyword, set()).add(event.repo_name)),  # save new results
         ops.do_action(on_error=print),
     )
 
