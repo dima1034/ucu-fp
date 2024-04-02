@@ -31,6 +31,7 @@ Lang = str
 LangCounter = Dict[Lang, int]
 LangCountersPerKeyWordStorage = Dict[Keyword, LangCounter]
 
+
 @dataclass
 class GithubEvent:
     repo_fullname: str
@@ -39,15 +40,18 @@ class GithubEvent:
     match_cnt: int
     langs: List[str]
 
+
 @dataclass
 class KeywordRepoNamePair:
     keyword: Keyword
     repo_name: RepoName
 
+
 @dataclass
 class KeywordLangPair:
     keyword: Keyword
     langs: List[Lang]
+
 
 @dataclass
 class LangStats:
@@ -55,21 +59,27 @@ class LangStats:
     lang: Lang
     cnt: int
 
+
 def _mapper(event: GithubEvent) -> KeywordRepoNamePair:
     return KeywordRepoNamePair(keyword=Keyword(event.keyword), repo_name=RepoName(event.repo_fullname))
+
 
 def filter_new_repos(storage: ReposPerKeywordStorage):
     def _filter_new_repos(src: Observable[GithubEvent]) -> Observable[KeywordRepoNamePair]:
         return src.pipe(
             ops.map(_mapper),
-            ops.filter(lambda event: event.repo_name not in storage.get(event.keyword, set())),
-            ops.do_action(lambda event: storage.setdefault(event.keyword, set()).add(event.repo_name)),
+            ops.filter(lambda event: event.repo_name not in storage.get(
+                event.keyword, set())),
+            ops.do_action(lambda event: storage.setdefault(
+                event.keyword, set()).add(event.repo_name)),
             ops.do_action(on_error=print),
         )
     return _filter_new_repos
 
+
 def _lang_mapper(event: GithubEvent) -> KeywordLangPair:
     return KeywordLangPair(keyword=Keyword(event.keyword), langs=[Lang(lang) for lang in event.langs])
+
 
 def get_lang_stats(storage: LangCountersPerKeyWordStorage):
     def _get_lang_stats(src: Observable[GithubEvent]) -> Observable[LangStats]:
@@ -85,6 +95,7 @@ def get_lang_stats(storage: LangCountersPerKeyWordStorage):
         )
     return _get_lang_stats
 
+
 def search_github(keyword):
     headers = {
         "Authorization": f"Bearer {GITHUB_ACCESS_TOKEN}",
@@ -98,6 +109,7 @@ def search_github(keyword):
         print(f"Error: {response.status_code}")
         return None
 
+
 def get_repo_language(languages_url):
     headers = {
         "Authorization": f"Bearer {GITHUB_ACCESS_TOKEN}",
@@ -109,6 +121,7 @@ def get_repo_language(languages_url):
         if languages:
             return max(languages, key=languages.get)
     return None
+
 
 def process_search_results(keyword, results):
     for item in results["items"]:
@@ -124,6 +137,7 @@ def process_search_results(keyword, results):
             langs=[language] if language else []
         )
 
+
 def track_keyword(keyword):
     results = search_github(keyword)
     if results:
@@ -131,22 +145,28 @@ def track_keyword(keyword):
         observable = from_iterable(events)
 
         new_repos_storage = defaultdict(set)
-        new_repos_observable = observable.pipe(filter_new_repos(new_repos_storage))
+        new_repos_observable = observable.pipe(
+            filter_new_repos(new_repos_storage))
 
         lang_stats_storage = defaultdict(lambda: defaultdict(int))
-        lang_stats_observable = observable.pipe(get_lang_stats(lang_stats_storage))
+        lang_stats_observable = observable.pipe(
+            get_lang_stats(lang_stats_storage))
 
         return new_repos_observable, lang_stats_observable
     return None, None
+
 
 def main():
     keyword = "python"
     new_repos_observable, lang_stats_observable = track_keyword(keyword)
 
     if new_repos_observable:
-        new_repos_observable.subscribe(on_next=lambda event: print(f"New repo: {event}"))
+        new_repos_observable.subscribe(
+            on_next=lambda event: print(f"New repo: {event}"))
     if lang_stats_observable:
-        lang_stats_observable.subscribe(on_next=lambda event: print(f"Lang stats: {event}"))
+        lang_stats_observable.subscribe(
+            on_next=lambda event: print(f"Lang stats: {event}"))
+
 
 if __name__ == "__main__":
     main()
