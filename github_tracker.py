@@ -9,6 +9,8 @@ import reactivex.operators as ops
 from dataclasses import dataclass
 from typing import Set, Dict, List
 from expression import curry
+from rx import from_iterable
+from rx.scheduler import ThreadPoolScheduler
 
 load_dotenv()
 
@@ -56,30 +58,29 @@ class LangStats:
 def _mapper(event: GithubEvent) -> KeywordRepoNamePair:
     return KeywordRepoNamePair(keyword=Keyword(event.keyword), repo_name=RepoName(event.repo_fullname))
 
-@curry(1)
-def filter_new_repos(storage: ReposPerKeywordStorage, src: Observable[GithubEvent]) -> Observable[KeywordRepoNamePair]:
-    return src.pipe(
-        ops.map(_mapper),
-        ops.filter(lambda event: event.repo_name not in storage.get(event.keyword, set())),
-        ops.do_action(lambda event: storage.setdefault(event.keyword, set()).add(event.repo_name)),
-        ops.do_action(on_error=print),
-    )
+def filter_new_repos(storage: ReposPerKeywordStorage):
+    def _filter_new_repos(src: Observable[GithubEvent]) -> Observable[KeywordRepoNamePair]:
+        return src.pipe(
+            ops.map(_mapper),
+            ops.filter(lambda event: event.repo_name not in storage.get(event.keyword, set())),
+            ops.do_action(lambda event: storage.setdefault(event.keyword, set()).add(event.repo_name)),
+            ops.do_action(on_error=print),
+        )
+    return _filter_new_repos
 
-def _lang_mapper(event: GithubEvent) -> KeywordLangPair:
-    return KeywordLangPair(keyword=Keyword(event.keyword), langs=[Lang(lang) for lang in event.langs])
+def get_lang_stats(storage: LangCountersPerKeyWordStorage):
+    def _get_lang_stats(src: Observable[GithubEvent]) -> Observable[LangStats]:
+        def _update_lang_stats(event: KeywordLangPair):
+            for lang in event.langs:
+                storage.setdefault(event.keyword, defaultdict(int))[lang] += 1
 
-@curry(1)
-def get_lang_stats(storage: LangCountersPerKeyWordStorage, src: Observable[GithubEvent]) -> Observable[LangStats]:
-    def _update_lang_stats(event: KeywordLangPair):
-        for lang in event.langs:
-            storage.setdefault(event.keyword, defaultdict(int))[lang] += 1
-
-    return src.pipe(
-        ops.map(_lang_mapper),
-        ops.do_action(_update_lang_stats),
-        ops.flat_map(lambda event: [LangStats(keyword=event.keyword, lang=lang, cnt=cnt)
-                                    for lang, cnt in storage[event.keyword].items()]),
-    )
+        return src.pipe(
+            ops.map(_lang_mapper),
+            ops.do_action(_update_lang_stats),
+            ops.flat_map(lambda event: [LangStats(keyword=event.keyword, lang=lang, cnt=cnt)
+                                        for lang, cnt in storage[event.keyword].items()]),
+        )
+    return _get_lang_stats
 
 def search_github(keyword):
     headers = {
@@ -124,13 +125,13 @@ def track_keyword(keyword):
     results = search_github(keyword)
     if results:
         events = process_search_results(keyword, results)
-        observable = Observable.from_iterable(events)
+        observable = from_iterable(events)
 
         new_repos_storage = defaultdict(set)
-        new_repos_observable = filter_new_repos(new_repos_storage, observable)
+        new_repos_observable = observable.pipe(filter_new_repos(new_repos_storage))
 
         lang_stats_storage = defaultdict(lambda: defaultdict(int))
-        lang_stats_observable = get_lang_stats(lang_stats_storage, observable)
+        lang_stats_observable = observable.pipe(get_lang_stats(lang_stats_storage))
 
         return new_repos_observable, lang_stats_observable
     return None, None

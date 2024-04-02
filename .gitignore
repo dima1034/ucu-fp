@@ -1,6 +1,6 @@
 # Flask
 /.venv/
-.env.local
+.env*
 
 # IDE/Editor specific files
 .vscode/
