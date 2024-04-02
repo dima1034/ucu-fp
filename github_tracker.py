@@ -68,6 +68,9 @@ def filter_new_repos(storage: ReposPerKeywordStorage):
         )
     return _filter_new_repos
 
+def _lang_mapper(event: GithubEvent) -> KeywordLangPair:
+    return KeywordLangPair(keyword=Keyword(event.keyword), langs=[Lang(lang) for lang in event.langs])
+
 def get_lang_stats(storage: LangCountersPerKeyWordStorage):
     def _get_lang_stats(src: Observable[GithubEvent]) -> Observable[LangStats]:
         def _update_lang_stats(event: KeywordLangPair):
