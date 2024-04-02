@@ -4,13 +4,17 @@ import time
 from collections import defaultdict
 from dotenv import load_dotenv
 import os
+from reactivex import Observable
+from reactivex.scheduler import ThreadPoolScheduler
+from message import GithubEvent
+import datetime
 
 app = Flask(__name__)
 
 # GitHub API configuration
 GITHUB_API_URL = "https://api.github.com"
 GITHUB_ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
-REQUESTS_PER_MINUTE = 30  # Adjust based on GitHub API rate limits
+REQUESTS_PER_MINUTE = 30 
 
 # In-memory data store (replace with a proper database for production)
 project_data = defaultdict(lambda: defaultdict(int))
@@ -53,9 +57,15 @@ def process_search_results(keyword, results):
     for item in results["items"]:
         repo_full_name = item["repository"]["full_name"]
         language = get_repo_language(item["repository"]["languages_url"])
-
         project_data[keyword][repo_full_name] += 1
         language_stats[language] += 1
+        yield GithubEvent(
+            repo_fullname=repo_full_name,
+            keyword=keyword,
+            found_date=datetime.datetime.now(),
+            match_cnt=project_data[keyword][repo_full_name],
+            langs=[language] if language else []
+        )
 
 
 def get_top_projects(keyword, limit=5):
@@ -72,11 +82,11 @@ def get_language_stats():
 @app.route("/track", methods=["POST"])
 def track_keyword():
     keyword = request.json["keyword"]
-
     results = search_github(keyword)
     if results:
-        process_search_results(keyword, results)
-
+        events = process_search_results(keyword, results)
+        observable = Observable.from_iterable(events)
+        observable.subscribe(on_next=lambda event: print(event))
     return jsonify({"message": f"Tracking started for keyword: {keyword}"})
 
 
