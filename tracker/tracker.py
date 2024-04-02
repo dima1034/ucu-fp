@@ -4,13 +4,10 @@ from collections import defaultdict
 from dotenv import load_dotenv
 import os
 from reactivex import Observable
-from reactivex.scheduler import ThreadPoolScheduler
 import reactivex.operators as ops
 from dataclasses import dataclass
 from typing import Set, Dict, List
-from expression import curry
 from rx import from_iterable
-from rx.scheduler import ThreadPoolScheduler
 
 load_dotenv()
 
