@@ -5,7 +5,7 @@ from rx import operators as ops
 from collections import defaultdict
 
 # Import the necessary functions and classes from your code
-from tracker import GithubEvent, KeywordRepoNamePair, filter_new_repos, process_search_results
+from tracker.tracker import GithubEvent, KeywordRepoNamePair, filter_new_repos, process_search_results
 
 class TestGithubTracking(unittest.TestCase):
     @patch('your_module.search_github')
