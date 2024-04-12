@@ -4,6 +4,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 import os
 from reactivex import Observable
+from reactivex.scheduler import ThreadPoolScheduler
 import reactivex.operators as ops
 from dataclasses import dataclass
 from typing import Set, Dict, List
@@ -143,11 +144,15 @@ def track_keyword(keyword):
 
         new_repos_storage = defaultdict(set)
         new_repos_observable = observable.pipe(
-            filter_new_repos(new_repos_storage))
+            filter_new_repos(new_repos_storage),
+            ops.subscribe_on(ThreadPoolScheduler())
+        )
 
         lang_stats_storage = defaultdict(lambda: defaultdict(int))
         lang_stats_observable = observable.pipe(
-            get_lang_stats(lang_stats_storage))
+            get_lang_stats(lang_stats_storage),
+            ops.subscribe_on(ThreadPoolScheduler())
+        )
 
         return new_repos_observable, lang_stats_observable
     return None, None
@@ -159,10 +164,16 @@ def main():
 
     if new_repos_observable:
         new_repos_observable.subscribe(
-            on_next=lambda event: print(f"New repo: {event}"))
+            on_next=lambda event: print(f"New repo: {event}"),
+            on_error=lambda error: print(f"Error: {error}"),
+            on_completed=lambda: print("New repos tracking completed")
+        )
     if lang_stats_observable:
         lang_stats_observable.subscribe(
-            on_next=lambda event: print(f"Lang stats: {event}"))
+            on_next=lambda event: print(f"Lang stats: {event}"),
+            on_error=lambda error: print(f"Error: {error}"),
+            on_completed=lambda: print("Language stats tracking completed")
+        )
 
 
 if __name__ == "__main__":
