@@ -67,6 +67,7 @@ def aggregate_language_stats(src):
         with storage_lock:
             for lang in event.langs:
                 lang_stats_storage[event.keyword][lang] += 1
+            return event
 
     def emit_stats(event):
         with storage_lock:
@@ -84,7 +85,9 @@ def track_keyword(keyword):
     results = fetch_github_api(url)
     if results:
         events_observable = process_search_results(keyword, results)
+        # .pipe(ops.observe_on(NewThreadScheduler())) will make each iteration run in a separate thread
         new_repos_observable = filter_new_repos(events_observable).pipe(ops.observe_on(NewThreadScheduler()))
+        # .pipe(ops.observe_on(NewThreadScheduler())) will make each iteration run in a separate thread
         lang_stats_observable = aggregate_language_stats(events_observable).pipe(ops.observe_on(NewThreadScheduler()))
         return new_repos_observable, lang_stats_observable
     return None, None
@@ -94,11 +97,11 @@ def main():
     new_repos_observable, lang_stats_observable = track_keyword(keyword)
 
     if new_repos_observable and lang_stats_observable:
-        # new_repos_observable.subscribe(
-        #     on_next=lambda event: print(f"New repo (Thread: {threading.current_thread().name}): {event}"),
-        #     on_error=lambda error: print(f"Error in new repos observable: {error}"),
-        #     on_completed=lambda: print("New repos tracking completed")
-        # )
+        new_repos_observable.subscribe(
+            on_next=lambda event: print(f"New repo (Thread: {threading.current_thread().name}): {event.repo_fullname}"),
+            on_error=lambda error: print(f"Error in new repos observable: {error}"),
+            on_completed=lambda: print("New repos tracking completed")
+        )
         lang_stats_observable.subscribe(
             on_next=lambda stat: print(f"Lang stats (Thread: {threading.current_thread().name}): {stat}"),
             on_error=lambda error: print(f"Error in lang stats observable: {error}"),
