@@ -1,23 +1,24 @@
 import requests
 import datetime
-from collections import defaultdict
-from dotenv import load_dotenv
+from collections import defaultdict, deque
 import os
-from reactivex import Observable
+import threading
+from reactivex import from_iterable, operators as ops
 from reactivex.scheduler import ThreadPoolScheduler
-import reactivex.operators as ops
+from reactivex.scheduler import NewThreadScheduler
 from dataclasses import dataclass
-from typing import Set, Dict, List
-from rx import from_iterable
+from dotenv import load_dotenv
 
 load_dotenv()
 
 GITHUB_API_URL = "https://api.github.com"
 GITHUB_ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 REQUESTS_PER_MINUTE = 30
+thread_pool_scheduler = ThreadPoolScheduler(max_workers=10)
 
-project_data = defaultdict(lambda: defaultdict(int))
-language_stats = defaultdict(int)
+new_repos_storage = defaultdict(set)
+lang_stats_storage = defaultdict(lambda: defaultdict(int))
+storage_lock = threading.Lock()
 
 @dataclass
 class GithubEvent:
@@ -25,7 +26,7 @@ class GithubEvent:
     keyword: str
     found_date: datetime.datetime
     match_cnt: int
-    langs: List[str]
+    langs: list
 
 def get_authorization_headers():
     return {
@@ -37,85 +38,135 @@ def fetch_github_api(url: str):
     response = requests.get(url, headers=get_authorization_headers())
     return response.json() if response.status_code == 200 else None
 
-def process_search_results(keyword: str, results: dict):
-    return from_iterable((
+def get_languages(languages_url):
+    languages_data = fetch_github_api(languages_url)
+    return list(languages_data.keys()) if languages_data else []
+
+def process_search_results(keyword, results):
+    return from_iterable(
         GithubEvent(
             repo_fullname=item["repository"]["full_name"],
             keyword=keyword,
             found_date=datetime.datetime.now(),
-            match_cnt=project_data[keyword][item["repository"]["full_name"]],
-            langs=[fetch_github_api(item["repository"]["languages_url"])]
-        ) for item in results["items"]
-    ))
+            match_cnt=1,
+            langs=get_languages(item["repository"]["languages_url"])
+        ) for item in results.get("items", [])
+    )
 
-def track_keyword(keyword: str):
+def filter_new_repos(src):
+    def is_new_repo(event):
+        with storage_lock:
+            if event.repo_fullname not in new_repos_storage[event.keyword]:
+                new_repos_storage[event.keyword].add(event.repo_fullname)
+                return True
+        return False
+    return src.pipe(ops.filter(is_new_repo))
+
+# def aggregate_language_stats(src):
+#     def update_stats(event):
+#         with storage_lock:
+#             for lang in event.langs:
+#                 lang_stats_storage[event.keyword][lang] += 1
+
+#     return src.pipe(
+#         ops.do_action(update_stats),
+#         ops.map(lambda event: [{'keyword': event.keyword, 'lang': lang, 'count': count} 
+#                                 for lang, count in lang_stats_storage[event.keyword].items()]),
+#         ops.merge_all()
+#     )
+
+# def aggregate_language_stats(src):
+#     local_stats_storage = defaultdict(lambda: defaultdict(int))
+    
+#     def update_stats(event):
+#         for lang in event.langs:
+#             if lang:
+#                 local_stats_storage[event.keyword][lang] += 1
+
+#     def aggregate_final_stats():
+#         with storage_lock:
+#             for keyword, langs in local_stats_storage.items():
+#                 for lang, count in langs.items():
+#                     lang_stats_storage[keyword][lang] += count
+
+#             all_stats = []
+#             for keyword, langs in lang_stats_storage.items():
+#                 for lang, count in langs.items():
+#                     all_stats.append({'keyword': keyword, 'lang': lang, 'count': count})
+#             return all_stats
+
+#     return src.pipe(
+#         ops.do_action(update_stats),
+#         ops.map(lambda x: aggregate_final_stats()),  # Call a function that safely prepares the stats
+#         ops.flat_map(lambda stats: stats)  # Flatten the stats for output
+#     )
+
+# def aggregate_language_stats(src):
+#     local_stats_storage = defaultdict(lambda: defaultdict(int))
+    
+#     def update_stats(event):
+#         for lang in event.langs:
+#             if lang:
+#                 local_stats_storage[event.keyword][lang] += 1
+
+#     def aggregate_final_stats():
+#         with storage_lock:
+#             for keyword, langs in local_stats_storage.items():
+#                 for lang, count in langs.items():
+#                     lang_stats_storage[keyword][lang] += count
+
+#             all_stats = []
+#             for keyword, langs in lang_stats_storage.items():
+#                 for lang, count in langs.items():
+#                     all_stats.append({'keyword': keyword, 'lang': lang, 'count': count})
+#             return all_stats
+
+#     return src.pipe(
+#         ops.do_action(update_stats),
+#         ops.map(lambda x: aggregate_final_stats()),  # Call a function that safely prepares the stats
+#         ops.flat_map(lambda stats: stats)  # Flatten the stats for output
+#     )
+
+def aggregate_language_stats(src):
+    def update_stats(event):
+        with storage_lock:
+            for lang in event.langs:
+                lang_stats_storage[event.keyword][lang] += 1
+
+    def emit_stats(event):
+        with storage_lock:
+            stats = [{'keyword': event.keyword, 'lang': lang, 'count': count}
+                     for lang, count in lang_stats_storage[event.keyword].items()]
+        return from_iterable(stats)
+
+    return src.pipe(
+        ops.do_action(update_stats),
+        ops.flat_map(emit_stats)
+    )
+
+def track_keyword(keyword):
     url = f"{GITHUB_API_URL}/search/code?q={keyword}"
     results = fetch_github_api(url)
     if results:
         events_observable = process_search_results(keyword, results)
-        return filter_and_aggregate(events_observable, keyword)
-    return None
-
-def filter_and_aggregate(observable: Observable, keyword: str):
-    new_repos_storage = defaultdict(set)
-    lang_stats_storage = defaultdict(lambda: defaultdict(int))
-
-    new_repos_observable = observable.pipe(
-        filter_new_repos(new_repos_storage),
-        ops.subscribe_on(ThreadPoolScheduler())
-    )
-
-    lang_stats_observable = observable.pipe(
-        aggregate_language_stats(lang_stats_storage),
-        ops.subscribe_on(ThreadPoolScheduler())
-    )
-
-    return new_repos_observable, lang_stats_observable
-
-def filter_new_repos(storage):
-    def filter_func(event):
-        return event.repo_fullname not in storage[event.keyword]
-
-    def update_storage(event):
-        storage[event.keyword].add(event.repo_fullname)
-
-    return lambda src: src.pipe(
-        ops.filter(filter_func),
-        ops.do_action(update_storage)
-    )
-
-def aggregate_language_stats(storage):
-    def update_stats(event):
-        for lang in event.langs:
-            storage[event.keyword][lang] += 1
-
-    def to_lang_stats(keyword):
-        return [
-            {'keyword': keyword, 'lang': lang, 'count': count}
-            for lang, count in storage[keyword].items()
-        ]
-
-    return lambda src: src.pipe(
-        ops.do_action(update_stats),
-        ops.map(lambda event: to_lang_stats(event.keyword)),
-        ops.merge_all()
-    )
+        new_repos_observable = filter_new_repos(events_observable).pipe(ops.observe_on(NewThreadScheduler()))
+        lang_stats_observable = aggregate_language_stats(events_observable).pipe(ops.observe_on(NewThreadScheduler()))
+        return new_repos_observable, lang_stats_observable
+    return None, None
 
 def main():
     keyword = "python"
     new_repos_observable, lang_stats_observable = track_keyword(keyword)
 
-    if new_repos_observable:
-        new_repos_observable.subscribe(
-            on_next=lambda event: print(f"New repo: {event}"),
-            on_error=lambda error: print(f"Error: {error}"),
-            on_completed=lambda: print("New repos tracking completed")
-        )
-
-    if lang_stats_observable:
+    if new_repos_observable and lang_stats_observable:
+        # new_repos_observable.subscribe(
+        #     on_next=lambda event: print(f"New repo (Thread: {threading.current_thread().name}): {event}"),
+        #     on_error=lambda error: print(f"Error in new repos observable: {error}"),
+        #     on_completed=lambda: print("New repos tracking completed")
+        # )
         lang_stats_observable.subscribe(
-            on_next=lambda event: print(f"Lang stats: {event}"),
-            on_error=lambda error: print(f"Error: {error}"),
+            on_next=lambda stat: print(f"Lang stats (Thread: {threading.current_thread().name}): {stat}"),
+            on_error=lambda error: print(f"Error in lang stats observable: {error}"),
             on_completed=lambda: print("Language stats tracking completed")
         )
 
