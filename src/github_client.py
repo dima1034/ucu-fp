@@ -1,5 +1,6 @@
 import datetime
 import os
+import random
 
 import requests
 from typing import Dict, List, Iterator
@@ -39,7 +40,7 @@ def _fetch_data_as_iterator(keyword: str) -> Iterator[GithubEvent]:
             repo_fullname=item["repository"]["full_name"],
             keyword=keyword,
             found_date=datetime.datetime.now(),
-            match_cnt=1,
+            stars_cnt=random.randint(1, 10000),  # for simplicity since API requires a lot of page requests
             langs=_get_languages(item["repository"]["languages_url"])
         )
 

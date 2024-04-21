@@ -2,9 +2,11 @@ import threading
 
 from dotenv import load_dotenv
 from reactivex import Observable, operators as ops
+import reactivex
 from reactivex.scheduler import ThreadPoolScheduler
 
 import src.new_repo_processor as repo
+import src.language_stats_processor as lang
 from src.github_client import fetch_data_as_observable
 from src.message import GithubEvent
 
@@ -18,12 +20,10 @@ if __name__ == "__main__":
 
     repos_storage = dict()
     new_repos = repo.filter_new_repos(repos_storage)
+    lang_stat = lang.get_lang_stats(dict())
 
-    source: Observable[GithubEvent] = fetch_data_as_observable(words[0])
-    new_repos_obs = new_repos(source).pipe(ops.observe_on(thread_pool_scheduler))
-
-    new_repos_obs.subscribe(
-        on_next=lambda event: print(f"New repo (Thread: {threading.current_thread().name}): {event.repo_name}"),
-        on_error=lambda error: print(f"Error in new repos observable: {error}"),
-        on_completed=lambda: print("New repos tracking completed")
-    )
+    fetched_data: Observable[GithubEvent] = fetch_data_as_observable(words[0])
+    fetched_data.pipe(ops.retry(5), ops.share(),
+                      lambda src_of_message: reactivex.merge(new_repos(src_of_message),
+                                                             lang_stat(src_of_message)),
+                      ).subscribe(on_next=print, on_error=print)
