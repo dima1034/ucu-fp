@@ -16,7 +16,8 @@ thread_pool_scheduler = ThreadPoolScheduler(max_workers=10)
 # new_thread_scheduler = NewThreadScheduler()
 
 if __name__ == "__main__":
-    words = ["python", "java"]
+    # BaLiKfromUA github_pat_11
+    words = ["BaLiKfromUA", "java"]
 
     repos_storage = dict()
     new_repos = repo.filter_new_repos(repos_storage)
@@ -26,4 +27,7 @@ if __name__ == "__main__":
     fetched_data.pipe(ops.retry(5), ops.share(),
                       lambda src_of_message: reactivex.merge(new_repos(src_of_message),
                                                              lang_stat(src_of_message)),
-                      ).subscribe(on_next=print, on_error=print)
+                      # ops.observe_on(thread_pool_scheduler)
+                      ).subscribe(
+        on_next=lambda event: print(f"New event (Thread: {threading.current_thread().name}): {event}"),
+        on_error=print)

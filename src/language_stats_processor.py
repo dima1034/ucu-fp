@@ -1,6 +1,6 @@
 import threading
 from dataclasses import dataclass
-from typing import Dict, List, Iterator
+from typing import Dict, List
 
 import reactivex.operators as ops
 from expression import curry

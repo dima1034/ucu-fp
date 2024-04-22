@@ -10,13 +10,12 @@ from reactivex import from_iterable, Observable
 from message import GithubEvent
 
 GITHUB_API_URL = "https://api.github.com"
-GITHUB_ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
 REQUESTS_PER_MINUTE = 30
 
 
 def _get_authorization_headers() -> Dict:
     return {
-        "Authorization": f"Bearer {GITHUB_ACCESS_TOKEN}",
+        "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
         "Accept": "application/vnd.github.v3+json"
     }
 
