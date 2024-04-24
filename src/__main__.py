@@ -28,7 +28,6 @@ if __name__ == "__main__":
     async def main():
 
         fetched_data = await fetch_data_as_observable_async(words[0])
-
         thread_pool_scheduler = ThreadPoolScheduler(max_workers=10)
 
         fetched_data.pipe(
