@@ -7,6 +7,7 @@ from expression import curry
 from reactivex import Observable
 
 from message import GithubEvent
+import asyncio
 
 Keyword = str
 RepoName = str
@@ -39,8 +40,8 @@ def filter_new_repos(storage: ReposPerKeywordStorage, src: Observable[GithubEven
     storage_lock = threading.Lock()
     return src.pipe(
         ops.map(_mapper),
-        # ops.do_action(print),  # log
-        ops.filter(lambda event: _filter_event(storage, storage_lock, event)),  # filter old results
-        ops.do_action(lambda event: _save_event(storage, storage_lock, event)),  # save new results
+        # ops.do_action(..),
+        ops.filter(lambda event: _filter_event(storage, storage_lock, event)),
+        ops.do_action(lambda event: _save_event(storage, storage_lock, event)),  
         ops.do_action(on_error=print),
     )

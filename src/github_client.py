@@ -14,7 +14,7 @@ GITHUB_API_URL = "https://api.github.com"
 REQUESTS_PER_MINUTE = 30
 
 
-async def _get_authorization_headers() -> Dict:
+def _get_authorization_headers() -> Dict:
     return {
         "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}",
         "Accept": "application/vnd.github.v3+json",
@@ -28,20 +28,20 @@ def _fetch_github_api(url: str) -> Dict:
 
 
 async def _fetch_github_api_async(url: str) -> Dict:
-    headers = await _get_authorization_headers()
+    headers = _get_authorization_headers()
     async with aiohttp.ClientSession() as session:
         async with session.get(url, headers=headers) as response:
             assert response.status == 200, f"status code {response.status}"
             return await response.json()
 
 
-async def _get_languages_async(languages_url: str) -> List[str]:
-    languages_data = await _fetch_github_api_async(languages_url)
+def _get_languages(languages_url: str) -> List[str]:
+    languages_data = _fetch_github_api(languages_url)
     return list(languages_data.keys()) if languages_data else []
 
 
-def _get_languages(languages_url: str) -> List[str]:
-    languages_data = _fetch_github_api(languages_url)
+async def _get_languages_async(languages_url: str) -> List[str]:
+    languages_data = await _fetch_github_api_async(languages_url)
     return list(languages_data.keys()) if languages_data else []
 
 
