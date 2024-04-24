@@ -6,7 +6,6 @@ import threading
 from reactivex import from_iterable, operators as ops
 from reactivex.scheduler import ThreadPoolScheduler
 from reactivex.scheduler import NewThreadScheduler
-from dataclasses import dataclass
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,13 +19,7 @@ new_repos_storage = defaultdict(set)
 lang_stats_storage = defaultdict(lambda: defaultdict(int))
 storage_lock = threading.Lock()
 
-@dataclass
-class GithubEvent:
-    repo_fullname: str
-    keyword: str
-    found_date: datetime.datetime
-    match_cnt: int
-    langs: list
+
 
 def get_authorization_headers():
     return {
@@ -60,14 +53,17 @@ def filter_new_repos(src):
                 new_repos_storage[event.keyword].add(event.repo_fullname)
                 return True
         return False
-    return src.pipe(ops.filter(is_new_repo))
+    return src.pipe(
+        ops.filter(is_new_repo),
+        ops.observe_on(NewThreadScheduler())
+    )
 
 def aggregate_language_stats(src):
     def update_stats(event):
         with storage_lock:
             for lang in event.langs:
                 lang_stats_storage[event.keyword][lang] += 1
-            return event
+        return event
 
     def emit_stats(event):
         with storage_lock:
@@ -76,7 +72,8 @@ def aggregate_language_stats(src):
         return from_iterable(stats)
 
     return src.pipe(
-        ops.do_action(update_stats),
+        ops.map(update_stats),
+        ops.observe_on(NewThreadScheduler()),
         ops.flat_map(emit_stats)
     )
 
@@ -85,10 +82,8 @@ def track_keyword(keyword):
     results = fetch_github_api(url)
     if results:
         events_observable = process_search_results(keyword, results)
-        # .pipe(ops.observe_on(NewThreadScheduler())) will make each iteration run in a separate thread
-        new_repos_observable = filter_new_repos(events_observable).pipe(ops.observe_on(NewThreadScheduler()))
-        # .pipe(ops.observe_on(NewThreadScheduler())) will make each iteration run in a separate thread
-        lang_stats_observable = aggregate_language_stats(events_observable).pipe(ops.observe_on(NewThreadScheduler()))
+        new_repos_observable = filter_new_repos(events_observable)
+        lang_stats_observable = aggregate_language_stats(events_observable)
         return new_repos_observable, lang_stats_observable
     return None, None
 
@@ -110,3 +105,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# 1. Async IO. Do requests in parallel
+# 2. Fix Threading. Use ThreadPoolScheduler
+# 3. Cover with unit tests. Use pytest
+# 4. https://github.com/BaLiKfromUA/github_livetracker/blob/event_processors/src/language_stats_processor.py
