@@ -1,17 +1,14 @@
 import datetime
 import os
 import random
-import asyncio
 import requests
 from typing import AsyncGenerator, Dict, List, Iterator
 from reactivex import from_iterable, Observable
-from reactivex import operators as ops
-from reactivex.scheduler import ThreadPoolScheduler
 import reactivex
+import aiohttp
 
 from message import GithubEvent
 
-import aiohttp
 
 GITHUB_API_URL = "https://api.github.com"
 REQUESTS_PER_MINUTE = 30
@@ -58,7 +55,7 @@ def _fetch_data_as_iterator(keyword: str) -> Iterator[GithubEvent]:
             found_date=datetime.datetime.now(),
             stars_cnt=random.randint(
                 1, 10000
-            ),  # for simplicity since API requires a lot of page requests
+            ),
             langs=_get_languages(item["repository"]["languages_url"]),
         )
 
@@ -75,7 +72,7 @@ async def _fetch_data_as_async_generator(
             found_date=datetime.datetime.now(),
             stars_cnt=random.randint(
                 1, 10000
-            ),  # for simplicity since API requires a lot of page requests
+            ),
             langs=await _get_languages_async(item["repository"]["languages_url"]),
         )
 
