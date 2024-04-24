@@ -6,7 +6,7 @@ import reactivex.operators as ops
 from expression import curry
 from reactivex import Observable
 
-from src.message import GithubEvent
+from message import GithubEvent
 
 Keyword = str
 RepoName = str
